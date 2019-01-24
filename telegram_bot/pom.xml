@@ -8,5 +8,12 @@
     <artifactId>telegram_bot</artifactId>
     <version>1.0-SNAPSHOT</version>
 
+    <dependencies>
+        <dependency>
+            <groupId>org.telegram</groupId>
+            <artifactId>telegrambots</artifactId>
+            <version>3.6</version>
+        </dependency>
+    </dependencies>
 
 </project>

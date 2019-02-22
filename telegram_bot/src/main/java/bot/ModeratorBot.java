@@ -1,6 +1,6 @@
 package bot;
 
-import chats.ChatInfo;
+import chats.GroupChatHandler;
 import commands.*;
 import org.telegram.telegrambots.bots.TelegramLongPollingBot;
 import org.telegram.telegrambots.meta.api.methods.groupadministration.KickChatMember;
@@ -10,6 +10,9 @@ import org.telegram.telegrambots.meta.api.objects.*;
 import org.telegram.telegrambots.meta.exceptions.TelegramApiException;
 import org.telegram.telegrambots.meta.logging.BotLogger;
 import java.util.Map;
+import java.util.Set;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 
 /**
  * The {@code ModeratorBot} class represents a bot that can act as a moderator in group chats.
@@ -24,6 +27,11 @@ public class ModeratorBot extends TelegramLongPollingBot {
     private static final int COUNT_OF_WARNINGS = 3;
 
     /**
+     * Thread Pool is used for quick answers to incoming message.
+     */
+    private ExecutorService service =  Executors.newFixedThreadPool(4);
+
+    /**
      * List of commands.
      */
     private AddSwearCommand addSwearCommand;
@@ -33,24 +41,22 @@ public class ModeratorBot extends TelegramLongPollingBot {
 
 
     public ModeratorBot(){
-       addSwearCommand = new AddSwearCommand(Command.ADD_SWEAR.getName());
-       removeSwearCommand = new RemoveSwearCommand(Command.REMOVE_SWEAR.getName());
-       addPhotoCommand = new AddPhotoCommand(Command.ADD_PHOTO.getName());
-       removePhotoCommand = new RemovePhotoCommand(Command.REMOVE_PHOTO.getName());
+       addSwearCommand = new AddSwearCommand(Command.ADD_SWEAR);
+       removeSwearCommand = new RemoveSwearCommand(Command.REMOVE_SWEAR);
+       addPhotoCommand = new AddPhotoCommand(Command.ADD_PHOTO);
+       removePhotoCommand = new RemovePhotoCommand(Command.REMOVE_PHOTO);
     }
 
     @Override
     public void onUpdateReceived(Update update) {
-        try {
+        service.execute(()->{
             if (update.hasMessage() && update.getMessage().isSuperGroupMessage()) {
                 Message message = update.getMessage();
 
-                ChatInfo.checkIfStorageExistsForChat(message);
+                GroupChatHandler.checkIfStorageExistsForChat(message);
                 handleIncomingMessage(message);
             }
-        }catch (Exception e){
-            BotLogger.error(this.getClass().getName(), e);
-        }
+       });
     }
 
     /**
@@ -78,12 +84,11 @@ public class ModeratorBot extends TelegramLongPollingBot {
         else if(message.getLeftChatMember() != null){
             User user = message.getLeftChatMember();
             sendMessage("Счастливого пути, " + user.getFirstName()+ "!", message.getChatId());
-            ChatInfo.getChats().get(message.getChatId()).remove(user);
+            GroupChatHandler.removeMemberFromGroupChat(message);
         }
         else if(!message.getNewChatMembers().isEmpty()) {
             for (User user : message.getNewChatMembers()) {
-                int startWarningCount = 0;
-                ChatInfo.getChats().get(message.getChatId()).put(message.getFrom(), startWarningCount);
+                GroupChatHandler.putChatMemberOnTheWarningCounter(message);
                 sendWelcomeMessageWithAttachedRules(user, message);
             }
         }
@@ -94,11 +99,13 @@ public class ModeratorBot extends TelegramLongPollingBot {
      *
      * @param message the message from group chat.
      */
-    private void checkMessageOnSwearWord(Message message) {
-        for (String swearWord : ChatInfo.getSwearWords().get(message.getChatId())) {
-            if (message.getText().contains(swearWord)) {
-                for (Map.Entry<User, Integer> member : ChatInfo.getChats().get(message.getChatId()).entrySet()){
-                    if (member.getKey().getId().equals(message.getFrom().getId())) {
+    private synchronized void checkMessageOnSwearWord(Message message) {
+        Set<String> swearWords = GroupChatHandler.getGroupChats().get(message.getChatId()).getSwearWords();
+        for(String swearWord : swearWords){
+            if(message.getText().contains(swearWord)){
+                Map<User,Integer> members = GroupChatHandler.getGroupChats().get(message.getChatId()).getMembers();
+                for(Map.Entry<User, Integer> member : members.entrySet()){
+                    if(member.getKey().getId().equals(message.getFrom().getId())){
                         warnChatMember(member.getKey(), message);
                     }
                 }
@@ -112,14 +119,11 @@ public class ModeratorBot extends TelegramLongPollingBot {
      *
      * @param message the message from group chat.
      */
-    private void checkPhotoTrigger(Message message){
-        for(Map.Entry<Long, Map<String, PhotoSize>> photoTriggers : ChatInfo.getPhotoTriggers().entrySet()){
-            if(message.getChatId().equals(photoTriggers.getKey())) {
-                for (Map.Entry<String, PhotoSize> photos : photoTriggers.getValue().entrySet()) {
-                    if (message.getText().contains(photos.getKey())) {
-                        sendPhoto(photoTriggers.getValue().get(message.getText()), message.getChatId());
-                    }
-                }
+    private synchronized void checkPhotoTrigger(Message message){
+        Map<String, PhotoSize> photoTriggers = GroupChatHandler.getGroupChats().get(message.getChatId()).getPhotoTriggers();
+        for(Map.Entry<String, PhotoSize> photoTrigger : photoTriggers.entrySet()){
+            if (message.getText().contains(photoTrigger.getKey())) {
+                sendPhoto(photoTrigger.getValue(), message.getChatId());
             }
         }
     }
@@ -130,18 +134,18 @@ public class ModeratorBot extends TelegramLongPollingBot {
      * @param member the member of group chat.
      * @param message the message from group chat.
      */
-    private void warnChatMember(User member, Message message){
-        int currentNumOfWarnings = ChatInfo.getChats().get(message.getChatId()).get(member);
-            if(currentNumOfWarnings < COUNT_OF_WARNINGS){
-                int newNumOfWarnings = currentNumOfWarnings + 1;
-                ChatInfo.getChats().get(message.getChatId()).replace(member, newNumOfWarnings);
-                sendMessage(member.getFirstName() + ", Нельзя ругаться!" +
+    private synchronized void warnChatMember(User member, Message message){
+        int currentNumOfWarnings = GroupChatHandler.getGroupChats().get(message.getChatId()).getMembers().get(member);
+        if(currentNumOfWarnings < COUNT_OF_WARNINGS){
+            int newNumOfWarnings = currentNumOfWarnings + 1;
+            GroupChatHandler.getGroupChats().get(message.getChatId()).getMembers().replace(member, newNumOfWarnings);
+            sendMessage(member.getFirstName() + ", Нельзя ругаться!" +
                     " [Предупреждений " + newNumOfWarnings + "/" + COUNT_OF_WARNINGS + "]", message.getChatId());
 
-                if(newNumOfWarnings == COUNT_OF_WARNINGS)
-                    sendMessage(member.getFirstName() + ", за следущее нарушение правил получите бан!", message.getChatId());
-            }
-            else banChatMember(member, message);
+            if(newNumOfWarnings == COUNT_OF_WARNINGS)
+                sendMessage(member.getFirstName() + ", за следущее нарушение правил получите бан!", message.getChatId());
+        }
+        else banChatMember(member, message);
     }
 
     /**
@@ -150,14 +154,14 @@ public class ModeratorBot extends TelegramLongPollingBot {
      * @param member the member of group chat.
      * @param message the message from group chat.
      */
-    private void banChatMember(User member, Message message){
-        if(!ChatInfo.isMessageFromAdmin(this, message)) {
+    private synchronized void banChatMember(User member, Message message){
+        if(!GroupChatHandler.isMessageFromAdmin(this, message)) {
             int lockoutTimeInSeconds = 86400;
             KickChatMember kickChatMember = new KickChatMember();
             kickChatMember.setChatId(message.getChatId());
             kickChatMember.setUserId(message.getFrom().getId());
             kickChatMember.setUntilDate(lockoutTimeInSeconds);
-            ChatInfo.getChats().get(message.getChatId()).remove(member);
+            GroupChatHandler.removeMemberFromGroupChat(message);
             try {
                 execute(kickChatMember);
                 sendMessage("Пользователь " + member.getFirstName() + " забанен на сутки.", message.getChatId());
@@ -190,20 +194,20 @@ public class ModeratorBot extends TelegramLongPollingBot {
      *
      * @param message the message from group chat.
      */
-    private void executeCommand(Message message){
+    private synchronized void executeCommand(Message message){
 
-        if(isCommand(message, addSwearCommand.getCommandIdentifier())){
+        if(isCommand(message, addSwearCommand.getCommand().getName())){
            addSwearCommand.execute(this, message);
        }
 
-       else if(isCommand(message, removeSwearCommand.getCommandIdentifier())){
+       else if(isCommand(message, removeSwearCommand.getCommand().getName())){
            removeSwearCommand.execute(this, message);
        }
 
-       else if(isCommand(message, addPhotoCommand.getCommandIdentifier())){
+       else if(isCommand(message, addPhotoCommand.getCommand().getName())){
            addPhotoCommand.execute(this, message);
          }
-         else if(isCommand(message, removePhotoCommand.getCommandIdentifier())){
+         else if(isCommand(message, removePhotoCommand.getCommand().getName())){
              removePhotoCommand.execute(this, message);
        }
 

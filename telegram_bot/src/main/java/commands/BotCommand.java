@@ -15,10 +15,10 @@ public abstract class BotCommand implements IBotCommand {
     /**
      * The value identifies the command name.
      */
-    private String commandIdentifier;
+    private Command commandIdentifier;
 
-    public BotCommand(String commandIdentifier){
-        if(commandIdentifier == null || commandIdentifier.isEmpty()){
+    public BotCommand(Command commandIdentifier){
+        if(commandIdentifier == null || commandIdentifier.getName().isEmpty()){
             throw new IllegalArgumentException("commandIdentifier cannot be null or empty");
         }
         this.commandIdentifier = commandIdentifier;
@@ -48,7 +48,7 @@ public abstract class BotCommand implements IBotCommand {
      * @return the command name.
      */
     @Override
-    public final String getCommandIdentifier() {
+    public final Command getCommand() {
         return commandIdentifier;
     }
 }

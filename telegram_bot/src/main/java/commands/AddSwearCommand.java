@@ -1,19 +1,20 @@
 package commands;
 
-import chats.ChatInfo;
+import chats.GroupChat;
+import chats.GroupChatHandler;
 import org.telegram.telegrambots.meta.api.objects.Message;
 import org.telegram.telegrambots.meta.bots.AbsSender;
 
 /**
  * The {@code AddSwearCommand} class that extends {@link BotCommand} class.
  * This class represents a command that allows group chat administrators to add a new word as a swear.
- * @see chats.ChatInfo#swearWords
+ * @see GroupChat#swearWords
  *
  * @author Amir Dogmosh
  */
 public class AddSwearCommand extends BotCommand {
 
-    public AddSwearCommand(String commandIdentifier) {
+    public AddSwearCommand(Command commandIdentifier) {
         super(commandIdentifier);
     }
 
@@ -26,16 +27,16 @@ public class AddSwearCommand extends BotCommand {
      */
     @Override
     public void execute(AbsSender absSender, Message message) {
-        if (ChatInfo.isMessageFromAdmin(absSender, message)){
+        if (GroupChatHandler.isMessageFromAdmin(absSender, message)){
             String newSwearWord = message.getText().substring(Command.ADD_SWEAR.getNameLength()).trim();
-            if (!ChatInfo.getSwearWords().get(message.getChatId()).contains(newSwearWord)){
-                ChatInfo.getSwearWords().get(message.getChatId()).add(newSwearWord);
+            if (!GroupChatHandler.getGroupChats().get(message.getChatId()).getSwearWords().contains(newSwearWord)){
+                GroupChatHandler.getGroupChats().get(message.getChatId()).getSwearWords().add(newSwearWord);
                 sendMessage(absSender,"Добавлено новое ругательное слово : " + newSwearWord, message.getChatId());
             } else {
                 sendMessage(absSender,"Даное слово уже есть в списке как ругательное. \nКоманда не выполнена!", message.getChatId());
             }
         }
-        else if(!ChatInfo.isMessageFromAdmin(absSender, message)) {
+        else if(!GroupChatHandler.isMessageFromAdmin(absSender, message)) {
             sendMessage(absSender,"Добавлять новые слова может только администратор.",message.getChatId());
         }
     }

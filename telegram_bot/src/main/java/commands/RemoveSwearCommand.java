@@ -1,19 +1,20 @@
 package commands;
 
-import chats.ChatInfo;
+import chats.GroupChat;
+import chats.GroupChatHandler;
 import org.telegram.telegrambots.meta.api.objects.Message;
 import org.telegram.telegrambots.meta.bots.AbsSender;
 
 /**
  * The {@code RemoveSwearCommand} class that extends {@link BotCommand} class.
  * This class represents a command that allows group chat administrators to remove a swear word from list.
- * @see chats.ChatInfo#swearWords
+ * @see GroupChat#swearWords
  *
  * @author Amir Dogmosh
  */
 public class RemoveSwearCommand extends BotCommand {
 
-    public RemoveSwearCommand(String commandIdentifier) {
+    public RemoveSwearCommand(Command commandIdentifier) {
         super(commandIdentifier);
     }
 
@@ -26,17 +27,17 @@ public class RemoveSwearCommand extends BotCommand {
      */
     @Override
     public void execute(AbsSender absSender, Message message){
-        if (ChatInfo.isMessageFromAdmin(absSender, message)){
+        if (GroupChatHandler.isMessageFromAdmin(absSender, message)){
             String swearWord = message.getText().substring(Command.REMOVE_SWEAR.getNameLength()).trim();
-            if (ChatInfo.getSwearWords().get(message.getChatId()).contains(swearWord)){
-                ChatInfo.getSwearWords().get(message.getChatId()).remove(swearWord);
+            if (GroupChatHandler.getGroupChats().get(message.getChatId()).getSwearWords().contains(swearWord)){
+                GroupChatHandler.getGroupChats().get(message.getChatId()).getSwearWords().remove(swearWord);
                 sendMessage(absSender,"Слово " + swearWord+"  было удалено!", message.getChatId());
             } else {
                 sendMessage(absSender,"Даное слово отсутствует в списке как ругательное. " +
                         "\nКоманда не выполнена!", message.getChatId());
             }
         }
-        else if(!ChatInfo.isMessageFromAdmin(absSender, message)) {
+        else if(!GroupChatHandler.isMessageFromAdmin(absSender, message)) {
             sendMessage(absSender,"Удалять слова из списка ругательных может только администратор.",message.getChatId());
         }
     }
